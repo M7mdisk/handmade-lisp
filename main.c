@@ -17,41 +17,102 @@ void add_history(char *unused) {}
 #include <editline/history.h>
 #include <editline/readline.h>
 #endif
-  return res;
+
+typedef enum { LVAL_NUM, LVAL_ERR } ValType;
+
+typedef enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM } LError;
+
+typedef struct {
+  ValType type;
+  union {
+    long num;
+    LError err;
+  };
+} lval;
+
+lval lval_num(long x) {
+  lval a;
+  a.num = x;
+  a.type = LVAL_NUM;
+  return a;
 }
 
-long eval_op(long x, char *op, long y) {
+lval lval_err(LError x) {
+  lval a;
+  a.type = LVAL_ERR;
+  a.err = x;
+  return a;
+}
+
+void lval_print(lval v) {
+  switch (v.type) {
+  /* In the case the type is a number print it */
+  /* Then 'break' out of the switch. */
+  case LVAL_NUM:
+    printf("%li", v.num);
+    break;
+
+  /* In the case the type is an error */
+  case LVAL_ERR:
+    /* Check what type of error it is and print it */
+    switch (v.err) {
+    case LERR_DIV_ZERO:
+      printf("Error: Division By Zero!");
+      break;
+    case LERR_BAD_OP:
+      printf("Error: Invalid Operator!");
+      break;
+    case LERR_BAD_NUM:
+      printf("Error: Invalid Number!");
+      break;
+    }
+    break;
+  }
+}
+
+void lval_println(lval v) {
+  lval_print(v);
+  putchar('\n');
+}
+
+lval eval_op(lval xval, char *op, lval yval) {
+  if (xval.type == LVAL_ERR)
+    return xval;
+  if (yval.type == LVAL_ERR)
+    return yval;
+  long x = xval.num;
+  long y = yval.num;
   if (strcmp(op, "+") == 0) {
-    return x + y;
+    return lval_num(x + y);
   }
   if (strcmp(op, "-") == 0) {
-    return x - y;
+    return lval_num(x - y);
   }
   if (strcmp(op, "*") == 0) {
-    return x * y;
+    return lval_num(x * y);
   }
   if (strcmp(op, "/") == 0) {
-    return x / y;
+    return y == 0 ? lval_err(LERR_DIV_ZERO) : lval_num(x / y);
   }
   if (strcmp(op, "%") == 0) {
-    return x % y;
+    return y == 0 ? lval_err(LERR_DIV_ZERO) : lval_num(x % y);
   }
   if (strcmp(op, "^") == 0) {
-    return pow(x, y);
+    return lval_num(pow(x, y));
   }
   if (strcmp(op, "min") == 0) {
-    return x > y ? y : x;
+    return lval_num(x > y ? y : x);
   }
   if (strcmp(op, "max") == 0) {
-    return x > y ? x : y;
+    return lval_num(x > y ? x : y);
   }
-  return 0;
+  return lval_err(LERR_BAD_OP);
 }
 
-long eval(mpc_ast_t *tree) {
+lval eval(mpc_ast_t *tree) {
 
   if (strstr(tree->tag, "number")) {
-    return atoi(tree->contents);
+    return lval_num(atoi(tree->contents));
   }
 
   if (tree->children_num == 1)
@@ -60,10 +121,10 @@ long eval(mpc_ast_t *tree) {
   // Skip the first child, because it is (
   char *op = tree->children[1]->contents;
 
-  long x = eval(tree->children[2]);
+  lval x = eval(tree->children[2]);
 
   if (tree->children_num == 4 && strcmp(op, "-") == 0) {
-    return -x;
+    return lval_num(-x.num);
   }
 
   for (size_t i = 3; i < tree->children_num - 1; i++) {
@@ -95,8 +156,8 @@ int main(int argc, char **argv) {
     add_history(input);
     if (mpc_parse("<stdin>", input, Hlisp, &r)) {
       // mpc_ast_print(r.output);
-      long result = eval(r.output);
-      printf("%li\n", result);
+      lval result = eval(r.output);
+      lval_println(result);
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
